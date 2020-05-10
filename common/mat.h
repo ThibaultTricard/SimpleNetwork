@@ -28,6 +28,11 @@ private :
 template<typename T>
 class vec {
 public :
+
+	vec<T>() {
+
+	};
+
 	vec<T> (int row) {
 		m_value = std::vector<T>(row);
 	};
@@ -44,10 +49,19 @@ private:
 	std::vector<T> m_value;
 };
 
-
+template<typename T>
+mat<T> transpose(mat<T>& m) {
+	mat<T> res(m[0].size(), m.size());
+	for (int i = 0; i < m.size(); i++) {
+		for (int j = 0; j < m[0].size(); j++) {
+			res[j][i] = m[i][j];
+		}
+	}
+	return res;
+}
 
 template<typename T>
-mat<T> operator+(mat<T> m1, mat<T> m2) {
+mat<T> operator+(mat<T>& m1, mat<T>& m2) {
 	mat<T> res(m1.size(), m1[0].size());
 	for (int i = 0; i < m1.size(); i++) {
 		for (int j = 0; j < m1[0].size(); j++) {
@@ -59,7 +73,7 @@ mat<T> operator+(mat<T> m1, mat<T> m2) {
 
 
 template<typename T>
-mat<T> operator*(mat<T> m1, mat<T> m2) {
+mat<T> operator*(mat<T>& m1, mat<T>& m2) {
 	mat<T> res(m1.size(), m2[0].size());
 	if (m1[0].size() == m2.size()) {
 		for (int i = 0; i < m1.size(); i++) {
@@ -74,7 +88,7 @@ mat<T> operator*(mat<T> m1, mat<T> m2) {
 }
 
 template<typename T>
-vec<T> operator*(mat<T> m1, vec<T> v) {
+vec<T> operator*(mat<T>& m1, vec<T>& v) {
 	vec<T> res(m1.size());
 	if (m1[0].size() == v.size()) {
 		for (int i = 0; i < m1.size(); i++) {
@@ -87,7 +101,7 @@ vec<T> operator*(mat<T> m1, vec<T> v) {
 }
 
 template<typename T>
-vec<T> operator-(vec<T> v1, vec<T> v2) {
+vec<T> operator-(vec<T>& v1, vec<T>& v2) {
 	vec<T> res(v1.size());
 	for (int i = 0; i < v1.size(); i++) {
 		res[i] += v1[i] - v2[i];
@@ -96,7 +110,7 @@ vec<T> operator-(vec<T> v1, vec<T> v2) {
 }
 
 template<typename T>
-vec<T> operator*(vec<T> v1, vec<T> v2) {
+vec<T> operator*(vec<T>& v1, vec<T>& v2) {
 	vec<T> res(v1.size());
 	for (int i = 0; i < v1.size(); i++) {
 		res[i] += v1[i] * v2[i];

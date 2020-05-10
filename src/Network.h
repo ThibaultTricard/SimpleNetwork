@@ -5,6 +5,8 @@
 #include "mat.h"
 #include <random>
 
+#define debugTraining 1
+
 typedef float input_t;
 
 class input {
@@ -25,10 +27,10 @@ public :
 		m_inputWeight =  mat<input_t>(size, inputsize);
 		m_iSize = inputsize;
 		m_oSize = size;
-
+		
+		//Weight generation using a random normal law cetered arroud 0 beetween -1.0/sqrt(inputsize) and +1.0/sqrt(inputsize)
 		std::default_random_engine generator;
 		std::normal_distribution<float> distribution(0.0, 1.0/sqrt(inputsize) /3.0);
-
 		for (int i = 0; i < size; i++) {
 			for (int j = 0; j < inputsize; j++) {
 				m_inputWeight[i][j] = distribution(generator);
@@ -36,11 +38,10 @@ public :
 		}
 	};
 
-	vec<input_t> evaluate( vec<input_t> input) {
-		m_lastinput = vec<input_t>(input.size());
-		for (int i = 0; i < input.size(); i++) {
-			m_lastinput[i] = input[i];
-		}
+	vec<input_t> evaluate(vec<input_t> input) {
+		//we keep a copy of the input and the output
+		//for the weight correction
+		m_lastinput = input;
 		m_lastOutput = m_inputWeight * input;
 		for (int i = 0; i < m_lastOutput.size(); i++) {
 			m_lastOutput[i] = sig(m_lastOutput[i]);
@@ -48,42 +49,26 @@ public :
 		return m_lastOutput;
 	}
 
-	vec<input_t> correct(vec<input_t> error, input_t lrate) {
-		mat<input_t> errWeight = errorMat();
-		vec<input_t> prev_error = errWeight * error;
-
-
-		mat<input_t> DeltaWeight(m_inputWeight.size(), m_inputWeight[0].size());
-		for (int i = 0; i < m_inputWeight.size(); i++) {
-			for (int j = 0; j < m_inputWeight[0].size(); j++) {
-				DeltaWeight[i][j] = lrate * error[i] * m_lastOutput[i] * (1.0 - m_lastOutput[i]) * m_lastinput[j];
-			}
-		}
-		m_inputWeight = m_inputWeight + DeltaWeight;
-		return prev_error;
+	vec<input_t> propagateBack(vec<input_t>& error) {
+		return transpose(m_inputWeight) * error;
 	}
 
-
-	int m_iSize = 0;
-	int m_oSize = 0;
-
-
+	void correct(vec<input_t>& error, input_t lrate) {
+		//we do a gradiate descente modulated by the learning rate on the weight
+		for (int i = 0; i < m_inputWeight.size(); i++) {
+			for (int j = 0; j < m_inputWeight[0].size(); j++) {
+				m_inputWeight[i][j] += lrate * error[i] * m_lastOutput[i] * (1.0 - m_lastOutput[i]) * m_lastinput[j];
+			}
+		}
+	}
 
 private :
 
-	mat<input_t> errorMat() {
-		mat<input_t> error(m_inputWeight[0].size(), m_inputWeight.size());
-		for (int i = 0; i < m_inputWeight.size(); i++) {
-			for (int j = 0; j < m_inputWeight[0].size(); j++) {
-				error[j][i] = m_inputWeight[i][j];
-			}
-		}
-		return error;
-	}
-
-	mat<input_t> m_inputWeight = mat<input_t>(0,0);
-	vec<input_t> m_lastOutput = vec<input_t>(0);
-	vec<input_t> m_lastinput = vec<input_t>(0);
+	int						m_iSize = 0;
+	int						m_oSize = 0;
+	mat<input_t>	m_inputWeight = mat<input_t>(0,0);
+	vec<input_t>	m_lastOutput;
+	vec<input_t>	m_lastinput;
 };
 
 class network {
@@ -93,16 +78,13 @@ public :
 		m_oSize = outputSize;
 		m_lRate = learningRate;
 		m_nbLayer = nbLayer;
-		m_layer = std::vector<layer*>(nbLayer + 2);
+		m_layer = std::vector<layer*>(nbLayer + 1);
 		m_layer[0] = new layer(inputSize, layerSize);
-		for (int i = 1; i <= nbLayer ; i++) {
+		for (int i = 1; i < nbLayer ; i++) {
 			m_layer[i] = new layer(layerSize, layerSize);
 		}
-		m_layer[nbLayer + 1] = new layer(layerSize, outputSize);
+		m_layer[nbLayer] = new layer(layerSize, outputSize);
 	}
-
-
-
 
 	void train(std::vector<input*> inputs) {
 		for (int i = 0; i < inputs.size(); i++) {
@@ -112,17 +94,20 @@ public :
 				vec<input_t> res = evaluate(input);
 				vec<input_t> error = target -res;
 				
-				//
+#if debugTraining
 				debug(i, res, target, error);
-
+#endif
+				vec<input_t> prev_error;
 				for (int j = m_layer.size() - 1; j >= 0; j--) {
-					error = m_layer[j]->correct(error, m_lRate);
+					prev_error = m_layer[j]->propagateBack(error);
+					m_layer[j]->correct(error, m_lRate);
+					error = prev_error;
 				}
 			}
 		}
 	}
 
-	vec<input_t> evaluate( vec<input_t> input) {
+	vec<input_t> evaluate(vec<input_t>& input) {
 		vec<input_t> out = input;
 		for (int i = 0; i < m_layer.size(); i++) {
 			out = m_layer[i]->evaluate(out);
@@ -130,7 +115,14 @@ public :
 		return out;
 	}
 
+	//used to evaluate the original error on the input
+	void inputError(vec<input_t>& error) {
+		for (int j = m_layer.size() - 1; j >= 0; j--) {
+			error = m_layer[j]->propagateBack(error);
+		}
+	}
 
+#if debugTraining
 	void debug(int sample, vec<input_t> res, vec<input_t> target, vec<input_t> error) {
 		//debug
 		std::cout << "sample " << sample << std::endl;
@@ -152,10 +144,7 @@ public :
 		}
 		std::cout << std::endl << std::endl;
 	}
-
-
-	
-
+#endif
 
 private : 
 	int m_iSize;
