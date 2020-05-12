@@ -26,7 +26,7 @@ private :
 	vec<input_t> m_target;
 };
 
-int main()
+void main()
 {
 	
 	int inputSize = 784;
@@ -34,14 +34,15 @@ int main()
 	int nbLayer = 1;
 	int layersize = 200;
 	float learningRate = 0.1;
-
+	int dataNb = 0;
+	/*
 	network* n = new network(inputSize, nbCategory, nbLayer, layersize, learningRate);
 
 	
 	//Training File
 	ifstream trainingData("./mnist_train.csv", ios::in);
 	std::vector<input*> inputs;
-	int dataNb = 0;
+	
 	if (trainingData)
 	{
 		string line;  
@@ -69,17 +70,22 @@ int main()
 			inputs.push_back(new input1D(data, target));
 
 			dataNb++;
+
+			//if (dataNb = 100000) break;
 		}
 	}
 
 	cout << "training ..." << endl;
 	n->train(inputs);
 	
+	n->save("test.net");
+	*/
+	network* n2 = new network("test.net");
+
 
 	//test File
 	ifstream testData("./mnist_test_10.csv", ios::in);
 	std::vector<input*> test;
-	dataNb = 0;
 	if (testData)
 	{
 		string line;
@@ -113,7 +119,7 @@ int main()
 	//test the training
 	cout <<endl<<endl<< "test data: ";
 	for (int i = 0; i < test.size(); i++) {
-		vec<input_t> error = test[i]->target() - n->evaluate(test[i]->toVector());
+		vec<input_t> error = test[i]->target() - n2->evaluate(test[i]->toVector());
 		cout << "err : " << i<< " : ";
 		for (int j = 0; j < error.size(); j++) {
 			cout << fixed << setprecision(4) << abs(error[j]) << " : ";
@@ -121,5 +127,5 @@ int main()
 		cout << endl;
 	}
 	
-	return 0;
+	return;
 }

@@ -4,6 +4,7 @@
 #include <iomanip>
 #include "mat.h"
 #include <random>
+#include <fstream>
 
 #define debugTraining 1
 
@@ -17,133 +18,96 @@ public:
 	virtual vec<input_t> target() = 0;
 };
 
-input_t sig(input_t x) {
-	return 1.0 / (1.0 + exp(-x));
-}
+input_t sig(input_t x);
 
 class layer {
-public :
-	layer(int inputsize, int size) {
-		m_inputWeight =  mat<input_t>(size, inputsize);
-		m_iSize = inputsize;
-		m_oSize = size;
-		
-		//Weight generation using a random normal law cetered arroud 0 beetween -1.0/sqrt(inputsize) and +1.0/sqrt(inputsize)
-		std::default_random_engine generator;
-		std::normal_distribution<float> distribution(0.0, 1.0/sqrt(inputsize) /3.0);
-		for (int i = 0; i < size; i++) {
-			for (int j = 0; j < inputsize; j++) {
-				m_inputWeight[i][j] = distribution(generator);
-			}
-		}
-	};
+public:
+	layer(int inputsize, int size);
 
-	vec<input_t> evaluate(vec<input_t> input) {
-		//we keep a copy of the input and the output
-		//for the weight correction
-		m_lastinput = input;
-		m_lastOutput = m_inputWeight * input;
-		for (int i = 0; i < m_lastOutput.size(); i++) {
-			m_lastOutput[i] = sig(m_lastOutput[i]);
-		}
-		return m_lastOutput;
+	layer(mat<input_t> weight) {
+		m_inputWeight = weight;
 	}
 
-	vec<input_t> propagateBack(vec<input_t>& error) {
-		return transpose(m_inputWeight) * error;
-	}
+	vec<input_t> evaluate(vec<input_t> input);
 
-	void correct(vec<input_t>& error, input_t lrate) {
-		//we do a gradiate descente modulated by the learning rate on the weight
-		for (int i = 0; i < m_inputWeight.size(); i++) {
-			for (int j = 0; j < m_inputWeight[0].size(); j++) {
-				m_inputWeight[i][j] += lrate * error[i] * m_lastOutput[i] * (1.0 - m_lastOutput[i]) * m_lastinput[j];
-			}
-		}
-	}
+	vec<input_t> propagateBack(vec<input_t>& error);
+
+	void correct(vec<input_t>& error, input_t lrate);
+
+	const mat<input_t> weight() { return m_inputWeight; };
+	int inputSize() { return m_iSize; };
+	int outputSize() { return m_oSize; };
 
 private :
 
 	int						m_iSize = 0;
 	int						m_oSize = 0;
-	mat<input_t>	m_inputWeight = mat<input_t>(0,0);
+	mat<input_t>	m_inputWeight;
 	vec<input_t>	m_lastOutput;
 	vec<input_t>	m_lastinput;
 };
 
 class network {
 public :
-	network(int inputSize, int outputSize, int nbLayer, int layerSize, float learningRate) {
-		m_iSize = inputSize;
-		m_oSize = outputSize;
-		m_lRate = learningRate;
-		m_nbLayer = nbLayer;
-		m_layer = std::vector<layer*>(nbLayer + 1);
-		m_layer[0] = new layer(inputSize, layerSize);
-		for (int i = 1; i < nbLayer ; i++) {
-			m_layer[i] = new layer(layerSize, layerSize);
+	network(int inputSize, int outputSize, int nbLayer, int layerSize, float learningRate);
+
+	network(std::string path) {
+		std::ifstream saveFile;
+		saveFile = std::ifstream(path, std::ios::out | std::ios::binary);
+		
+		saveFile.read((char*)&m_iSize, sizeof(m_iSize));
+		saveFile.read((char*)&m_oSize, sizeof(m_oSize));
+		saveFile.read((char*)&m_lRate, sizeof(m_lRate));
+		saveFile.read((char*)&m_nbLayer, sizeof(m_nbLayer));
+
+		m_layer = std::vector<layer*>(m_nbLayer);
+
+		for (int n = 0; n < m_nbLayer; n++) {
+			int iSize;
+			int oSize;
+			saveFile.read((char*)&iSize, sizeof(iSize));
+			saveFile.read((char*)&oSize, sizeof(oSize));
+			mat<input_t> w (oSize, iSize);
+			for (int i = 0; i < w.size(); i++) {
+				saveFile.read((char*)&w[i][0], w[i].size() * sizeof(input_t));
+			}
+			m_layer[n] = new layer(w);
 		}
-		m_layer[nbLayer] = new layer(layerSize, outputSize);
+		saveFile.close();
 	}
 
-	void train(std::vector<input*> inputs) {
-		for (int i = 0; i < inputs.size(); i++) {
-			vec<input_t>& input = inputs[i]->toVector();
-			vec<input_t>& target = inputs[i]->target();
-			if (input.size() == m_iSize && target.size() == m_oSize) {
-				vec<input_t> res = evaluate(input);
-				vec<input_t> error = target -res;
-				
-#if debugTraining
-				debug(i, res, target, error);
-#endif
-				vec<input_t> prev_error;
-				for (int j = m_layer.size() - 1; j >= 0; j--) {
-					prev_error = m_layer[j]->propagateBack(error);
-					m_layer[j]->correct(error, m_lRate);
-					error = prev_error;
-				}
+	void train(std::vector<input*> inputs);
+
+	vec<input_t> evaluate(vec<input_t>& input);
+
+	void save(std::string path) {
+		std::fstream saveFile;
+		saveFile = std::fstream(path, std::ios::out | std::ios::binary);
+		
+		saveFile.write((char*)&m_iSize, sizeof(m_iSize));
+		saveFile.write((char*)&m_oSize, sizeof(m_oSize));
+		saveFile.write((char*)&m_lRate, sizeof(m_lRate));
+		saveFile.write((char*)&m_nbLayer, sizeof(m_nbLayer));
+
+		for (int n = 0; n < m_nbLayer; n++) {
+			int iSize = m_layer[n]->inputSize();
+			int oSize = m_layer[n]->outputSize();
+			mat<input_t> w = m_layer[n]->weight();
+			saveFile.write((char*)&iSize, sizeof(iSize));
+			saveFile.write((char*)&oSize, sizeof(oSize));
+			for (int i = 0; i < w.size(); i++) {
+				saveFile.write((char*)&w[i][0], w[i].size() * sizeof(input_t));
 			}
 		}
-	}
 
-	vec<input_t> evaluate(vec<input_t>& input) {
-		vec<input_t> out = input;
-		for (int i = 0; i < m_layer.size(); i++) {
-			out = m_layer[i]->evaluate(out);
-		}
-		return out;
+		saveFile.close();
 	}
 
 	//used to evaluate the original error on the input
-	void inputError(vec<input_t>& error) {
-		for (int j = m_layer.size() - 1; j >= 0; j--) {
-			error = m_layer[j]->propagateBack(error);
-		}
-	}
+	void inputError(vec<input_t>& error);
 
 #if debugTraining
-	void debug(int sample, vec<input_t> res, vec<input_t> target, vec<input_t> error) {
-		//debug
-		std::cout << "sample " << sample << std::endl;
-		std::cout << "res : ";
-		for (int j = 0; j < error.size(); j++) {
-			std::cout << std::fixed << std::setprecision(4) << res[j] << " : ";
-		}
-		std::cout << std::endl;
-
-		std::cout << "tar : ";
-		for (int j = 0; j < error.size(); j++) {
-			std::cout << std::fixed << std::setprecision(4) << target[j] << " : ";
-		}
-		std::cout << std::endl;
-
-		std::cout << "err : ";
-		for (int j = 0; j < error.size(); j++) {
-			std::cout << std::fixed << std::setprecision(4) << abs(error[j]) << " : ";
-		}
-		std::cout << std::endl << std::endl;
-	}
+	void debug(int sample, vec<input_t> res, vec<input_t> target, vec<input_t> error);
 #endif
 
 private : 
